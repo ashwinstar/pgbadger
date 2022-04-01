@@ -3784,33 +3784,66 @@ sub process_file
 		# Parse csvlog lines
 		CSVLOOP: while (!$csv->eof())
 		{
-			# CSV columns information:
+			# PostgreSQL CSV columns information:
 			# ------------------------
-			# timestamp with milliseconds
-			# username
-			# database name
-			# Process id
-			# Remote host and port
-			# session id
-			# Line number
-			# PS display
-			# session start timestamp
-			# Virtual transaction id
-			# Transaction id
-			# Error severity
-			# SQL state code
-			# errmessage
-			# errdetail or errdetail_log
-			# errhint
-			# internal query
-			# internal pos
-			# errcontext
-			# user query
-			# file error location
-			# application name
-			# backend type
-			# leader PID
-			# query id
+			# timestamp with milliseconds - 0
+			# username - 1
+			# database name - 2
+			# Process id - 3
+			# Remote host and port - 4
+			# session id - 5
+			# Line number - 6
+			# PS display - 7
+			# session start timestamp - 8
+			# Virtual transaction id - 9
+			# Transaction id - 10
+			# Error severity - 11
+			# SQL state code - 12
+			# errmessage - 13
+			# errdetail or errdetail_log - 14
+			# errhint - 15
+			# internal query - 16
+			# internal pos - 17
+			# errcontext - 18
+			# user query - 19
+			# file error location - 20
+			# application name - 21
+			# backend type - 22
+			# leader PID - 23
+			# query id - 24
+
+		    	# GPDB CSV columns information:
+			# ------------------------------
+			# logtime timestamp with time zone - 0
+			# loguser text - 1
+			# logdatabase text - 2
+			# logpid text - 3
+			# logthread text - 4
+			# loghost text - 5
+			# logport text - 6
+			# logsessiontime timestamp with time zone - 7
+			# logtransaction int - 8
+			# logsession text - 9
+			# logcmdcount text - 10
+			# logsegment text - 11
+			# logslice text - 12
+			# logdistxact text - 13
+			# loglocalxact text - 14
+			# logsubxact text - 15
+			# logseverity text - 16
+			# logstate text - 17
+			# logmessage text - 18
+			# logdetail text - 19
+			# loghint text - 20
+			# logquery text - 21
+			# logquerypos int - 22
+			# logcontext text - 23
+			# logdebug text - 24
+			# logcursorpos int - 25
+			# logfunction text - 26
+			# logfile text - 27
+			# logline int - 28
+			# logstack text - 29
 
 			while (my $row = $csv->getline($lfile))
 			{
@@ -3819,15 +3852,15 @@ sub process_file
 				# We received a signal
 				last CSVLOOP if ($terminate);
 
-				# Number of columns in csvlog (21 before 9.0, 22 before 13.0, 25 in 14.0)
-				next if ( ($#{$row} < 21) && ($#{$row} > 24) );
+				# Number of columns in csvlog (21 before 9.0, 22 before 13.0, 25 in 14.0, 29 for GPDB6)
+				next if ( ($#{$row} < 21) && ($#{$row} > 29) );
 
 				# Set progress statistics
 				$cursize += length(join(',', @$row));
 				$nlines++;
 				&update_progress_bar($tmpoutfile, $nlines, $stop_offset, $totalsize, \$cursize, \$old_queries_count, \$old_errors_count, $fmt);
 
-				next if ( ($row->[11] !~ $parse_regex)  || ($row->[11] eq 'LOCATION'));
+				next if ( ($row->[16] !~ $parse_regex)  || ($row->[11] eq 'LOCATION'));
 
 				# Extract the date
 				if ($row->[0] =~ m/^(\d+)-(\d+)-(\d+)\s+(\d+):(\d+):(\d+)\.(\d+)/)
@@ -3863,22 +3896,23 @@ sub process_file
 					# Set query parameters as global variables
 					$prefix_vars{'t_dbuser'}  = $row->[1] || '';
 					$prefix_vars{'t_dbname'}  = $row->[2] || '';
-					$prefix_vars{'t_appname'} = $row->[22] || '';
-					$prefix_vars{'t_client'}  = $row->[4] || '';
+					#$prefix_vars{'t_appname'} = $row->[22] || '';
+					$prefix_vars{'t_client'}  = $row->[5] || '';
 					$prefix_vars{'t_client'}  =~ s/:.*//;
 					$prefix_vars{'t_client'} = _gethostbyaddr($prefix_vars{'t_client'}) if ($dns_resolv);
 					$prefix_vars{'t_host'}    = 'csv'; # this unused variable is used to store format information when log format is not syslog
 					$prefix_vars{'t_pid'}     = $row->[3];
-					$prefix_vars{'t_session_line'} = $row->[5];
+					$prefix_vars{'t_threadid'}     = $row->[4];
+					$prefix_vars{'t_session_line'} = $row->[9];
 					$prefix_vars{'t_session_line'} =~ s/\..*//;
-					$prefix_vars{'t_loglevel'} = $row->[11];
-					$prefix_vars{'t_query'}    = $row->[13];
+					$prefix_vars{'t_loglevel'} = $row->[16];
+					$prefix_vars{'t_query'}    = $row->[18];
 					# Set ERROR additional information
-					$prefix_vars{'t_detail'} = $row->[14];
-					$prefix_vars{'t_hint'} = $row->[15];
-					$prefix_vars{'t_context'} = $row->[18];
-					$prefix_vars{'t_statement'} = $row->[19];
-					$prefix_vars{'t_queryid'} = $row->[24] if ($#{$row} >= 24);
+					$prefix_vars{'t_detail'} = $row->[19];
+					$prefix_vars{'t_hint'} = $row->[20];
+					$prefix_vars{'t_context'} = $row->[23];
+					$prefix_vars{'t_statement'} = $row->[24];
+					#$prefix_vars{'t_queryid'} = $row->[24] if ($#{$row} >= 24);
 
 					# Store the current timestamp of the log line
 					&store_current_timestamp($prefix_vars{'t_timestamp'}, $prefix_vars{'t_pid'}, $prefix_vars{'t_dbname'});
@@ -3895,6 +3929,7 @@ sub process_file
 					# Check if the log line should be excluded from the report
 					if (&validate_log_line($prefix_vars{'t_pid'}))
 					{
+					        &logmsg('DEBUG', "extracted info $prefix_vars{'t_dbuser'} $prefix_vars{'t_loglevel'}");
 						# Parse the query now
 						&parse_query($fmt);
 
